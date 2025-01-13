@@ -1,11 +1,18 @@
 <script lang="ts">
-	import type { PageData } from "./$types";
+	import { navigating, page } from "$app/state";
 	import { enhance } from "$app/forms";
 	import { goto } from "$app/navigation";
+	import { browser } from "$app/environment";
+	import type { PageData } from "./$types";
 	import { Badge } from "$lib/components/ui/badge";
 	import { Button } from "$lib/components/ui/button";
 	import Input from "$lib/components/ui/input/input.svelte";
 	import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
+	import * as Popover from "$lib/components/ui/popover";
+	import Label from "$lib/components/ui/label/label.svelte";
+	import * as Select from "$lib/components/ui/select";
+	import * as Table from "$lib/components/ui/table";
+	import TimeChart from "$lib/components/TimeChart.svelte";
 	import {
 		ArrowLeft,
 		SquareArrowOutUpRight,
@@ -14,17 +21,11 @@
 		LoaderCircle,
 	} from "lucide-svelte";
 	import { currencyStore } from "$lib/stores/currencyStore.svelte";
-	import * as Popover from "$lib/components/ui/popover";
-	import { tableStore } from "$lib/stores/tableStore.svelte";
-	import Label from "$lib/components/ui/label/label.svelte";
-	import * as Select from "$lib/components/ui/select";
-	import * as Table from "$lib/components/ui/table";
-	import { browser } from "$app/environment";
-	import TimeChart from "$lib/components/TimeChart.svelte";
+	import { tableStore, tableStoreOptions } from "$lib/stores/tableStore.svelte";
 
 	let { data }: { data: PageData } = $props();
 
-	let userInput = $state(data.search);
+	let userInput = $state(page.params.name);
 	let processing = $state(false);
 
 	const currencies: {
@@ -40,20 +41,30 @@
 			? 1
 			: data.currencyRate.find((v) => v.code === currencyStore.value)?.rate || 0,
 	);
-	const inventorySum = $derived(
+	const totalCaseCount = $derived(data.inventory.reduce((acc, v) => acc + v.count, 0));
+	const totalCaseValue = $derived(
 		data.inventory.reduce((acc, v) => acc + v.sum * currentCurrencyRate, 0),
 	);
+	const computedData = $derived(
+		[...data.inventory].sort((a, b) => {
+			const key = tableStore.value.by as "name" | "price" | "count" | "sum";
+			const direction = tableStore.value.order === "ASC" ? 1 : -1;
+			if (key === "name") return direction * a[key].localeCompare(b[key]);
+			return direction * ((a[key] as number) - (b[key] as number));
+		}),
+	);
+
+	$effect(() => {
+		processing = navigating.type === "goto";
+	});
 </script>
 
 <svelte:head>
 	<title>{data.profileInfo.nick} | CaseValue</title>
 </svelte:head>
-
 <div class="flex w-full flex-col gap-4">
 	<div class="flex gap-2">
-		<Button href="/" size="icon" variant="outline">
-			<ArrowLeft />
-		</Button>
+		<Button href="/" size="icon" variant="outline"><ArrowLeft /></Button>
 		<form
 			method="post"
 			class="flex w-full items-center gap-2"
@@ -85,7 +96,7 @@
 						class="h-12 w-12 rounded-full"
 					/>
 					<a
-						href="https://steamcommunity.com/id/{data.search}"
+						href="https://steamcommunity.com/id/{page.params.name}"
 						target="_blank"
 						class="flex items-center gap-2 hover:underline"
 					>
@@ -108,25 +119,25 @@
 				<div class="flex flex-col text-sm">
 					<div class="flex justify-between gap-4 border-y-[1px] p-2">
 						<span class="text-nowrap">Last price update</span>
-						<span class="text-nowrap">{data.profileInfo.updatedAt.toLocaleString()}</span>
+						<span class="text-nowrap">{data.lastUpdate.updatedAt.toLocaleString()}</span>
 					</div>
 					<div class="flex justify-between gap-4 p-2">
 						<span>Case count</span>
-						<span>{data.inventory.reduce((acc, v) => acc + v.count, 0)}</span>
+						<span>{totalCaseCount}</span>
 					</div>
 					<div class="flex justify-between gap-4 border-y-[1px] p-2">
 						<span>Total case value</span>
 						<span>
-							{currencies[currencyStore.value].currencyFormatter(inventorySum.toFixed(2))}
+							{currencies[currencyStore.value].currencyFormatter(totalCaseValue.toFixed(2))}
 						</span>
 					</div>
 				</div>
 			</div>
 		</div>
-
 		<div class="flex w-full flex-col gap-4">
 			<div
-				class="relative min-h-96 w-full grow rounded-xl border-[1px] p-6 {!browser
+				class="relative h-full min-h-96 w-full grow rounded-xl border-[1px] p-6 {!browser ||
+				!data.inventory.length
 					? 'flex items-center justify-center'
 					: ''}"
 			>
@@ -152,8 +163,8 @@
 											<Select.Trigger class="capitalize">{tableStore.value.view}</Select.Trigger>
 											<Select.Content>
 												<Select.Group>
-													{#each ["list", "grid"] as field}
-														<Select.Item value={field} class="capitalize">{field}</Select.Item>
+													{#each tableStoreOptions.view as option}
+														<Select.Item value={option} class="capitalize">{option}</Select.Item>
 													{/each}
 												</Select.Group>
 											</Select.Content>
@@ -172,8 +183,8 @@
 											</Select.Trigger>
 											<Select.Content>
 												<Select.Group>
-													{#each ["name", "count", "price", "sum"] as field}
-														<Select.Item value={field} class="capitalize">{field}</Select.Item>
+													{#each tableStoreOptions.by as option}
+														<Select.Item value={option} class="capitalize">{option}</Select.Item>
 													{/each}
 												</Select.Group>
 											</Select.Content>
@@ -192,25 +203,22 @@
 											</Select.Trigger>
 											<Select.Content>
 												<Select.Group>
-													{#each ["ASC", "DESC"] as field}
-														<Select.Item value={field} class="capitalize">{field}</Select.Item>
+													{#each tableStoreOptions.order as option}
+														<Select.Item value={option} class="capitalize">{option}</Select.Item>
 													{/each}
 												</Select.Group>
 											</Select.Content>
 										</Select.Root>
 									</div>
 								</div>
-							</div></Popover.Content
-						>
+							</div>
+						</Popover.Content>
 					</Popover.Root>
-					{#if tableStore.value.view === "grid"}
+					{#if !data.inventory.length}
+						<div>Cases not found in this profile</div>
+					{:else if tableStore.value.view === "grid"}
 						<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4">
-							{#each data.inventory.sort((a, b) => {
-								const key = tableStore.value.by as "name" | "price" | "count" | "sum";
-								const direction = tableStore.value.order === "ASC" ? 1 : -1;
-								if (key === "name") return direction * a[key].localeCompare(b[key]);
-								return direction * ((a[key] as number) - (b[key] as number));
-							}) as entry}
+							{#each data.inventory as entry (entry.id)}
 								<div
 									class="flex flex-col justify-between gap-2 rounded-xl p-2 hover:bg-primary-foreground"
 								>
@@ -252,12 +260,7 @@
 									</Table.Row>
 								</Table.Header>
 								<Table.Body>
-									{#each data.inventory.sort((a, b) => {
-										const key = tableStore.value.by as "name" | "price" | "count" | "sum";
-										const direction = tableStore.value.order === "ASC" ? 1 : -1;
-										if (key === "name") return direction * a[key].localeCompare(b[key]);
-										return direction * ((a[key] as number) - (b[key] as number));
-									}) as entry}
+									{#each computedData as entry (entry.id)}
 										<Table.Row>
 											<Table.Cell>
 												<img
@@ -285,7 +288,7 @@
 					{/if}
 				{/if}
 			</div>
-			{#if browser}
+			{#if browser && data.chartData.length}
 				<div class="min-h-96 grow">
 					<TimeChart
 						data={data.chartData

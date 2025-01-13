@@ -2,8 +2,8 @@ import { error, type Actions } from "@sveltejs/kit";
 import type { PageServerLoad } from "./$types";
 import { STEAM_API_KEY } from "$env/static/private";
 import { db } from "$lib/server/db";
-import { currencyRates, items, itemsPrice, userItems, users } from "$lib/server/db/schema";
-import { and, eq, sql } from "drizzle-orm";
+import { currencyRates, items, itemsPrice, updates, userItems, users } from "$lib/server/db/schema";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { union } from "drizzle-orm/sqlite-core";
 
 interface Inventory {
@@ -132,10 +132,7 @@ async function getUserComputedInventory(id: string) {
 	);
 	for (const [k, n] of Object.entries(idCount)) {
 		const item = inventory.find((v) => v.id === k);
-		if (item) {
-			item.count = n;
-			item.sum = n * item.price;
-		}
+		if (item) item.count = n;
 	}
 
 	return inventory;
@@ -145,11 +142,8 @@ async function getUserProfile(id: string) {
 	const response = await fetch(endpoints.profile(id));
 	const data: PlayerSummaries = await response.json();
 	const player = data.response.players[0];
-	return {
-		id,
-		nick: player.personaname,
-		avatarHash: player.avatarhash,
-	};
+
+	return { id, nick: player.personaname, avatarHash: player.avatarhash };
 }
 
 async function getUserInfo(name: string) {
@@ -164,15 +158,21 @@ export const load: PageServerLoad = async ({ params }) => {
 	const { name } = params;
 
 	const steamUser = await getUserInfo(name);
-	if (steamUser.response.success !== 1) error(404, "not found");
+	if (steamUser.response.success !== 1) error(404, "Steam profile not found");
 	const steamUserId = steamUser.response.steamid;
 
 	const cachedUsers = await db.select().from(users).where(eq(users.id, steamUserId));
 	const cachedUser = cachedUsers.length ? cachedUsers[0] : null;
+	const [lastUpdate] = await db
+		.select()
+		.from(updates)
+		.where(eq(updates.userId, steamUserId))
+		.orderBy(desc(updates.updatedAt))
+		.limit(1);
 
 	let useCache = false;
-	if (cachedUser) {
-		const refreshAvailableAt = new Date(cachedUser.updatedAt.getTime());
+	if (cachedUser && lastUpdate) {
+		const refreshAvailableAt = new Date(lastUpdate.updatedAt);
 		refreshAvailableAt.setHours(refreshAvailableAt.getHours() + 2);
 		useCache = refreshAvailableAt > now;
 	}
@@ -190,45 +190,47 @@ export const load: PageServerLoad = async ({ params }) => {
 			.from(userItems)
 			.innerJoin(items, eq(userItems.itemId, items.id))
 			.innerJoin(itemsPrice, eq(items.id, itemsPrice.itemId))
-			.where(
-				and(eq(userItems.userId, steamUserId), eq(itemsPrice.createdAt, cachedUser.updatedAt)),
-			);
+			.where(and(eq(userItems.userId, steamUserId), eq(itemsPrice.updateId, lastUpdate.id)));
 		const currencyRate = await db
 			.select()
 			.from(currencyRates)
-			.where(eq(currencyRates.createdAt, cachedUser.updatedAt));
+			.where(eq(currencyRates.updateId, lastUpdate.id));
 		const chartData = await union(
 			db
 				.select({
 					sum: sql<number>`round(sum(item_price.price * user_item.count), 2)`.as("sum"),
 					code: sql<string>`"USD"`,
-					createdAt: itemsPrice.createdAt,
+					createdAt: updates.updatedAt,
 				})
 				.from(userItems)
 				.innerJoin(itemsPrice, eq(userItems.itemId, itemsPrice.itemId))
-				.where(eq(userItems.userId, steamUserId))
-				.groupBy(itemsPrice.createdAt),
+				.innerJoin(updates, eq(itemsPrice.updateId, updates.id))
+				.where(and(eq(userItems.userId, steamUserId), eq(updates.userId, steamUserId)))
+				.groupBy(updates.updatedAt),
 			db
 				.select({
 					sum: sql<number>`round(sum(item_price.price * user_item.count * currency_rates.rate), 2)`.as(
 						"sum",
 					),
 					code: currencyRates.code,
-					createdAt: itemsPrice.createdAt,
+					createdAt: updates.updatedAt,
 				})
 				.from(userItems)
 				.innerJoin(itemsPrice, eq(userItems.itemId, itemsPrice.itemId))
-				.innerJoin(currencyRates, eq(currencyRates.createdAt, itemsPrice.createdAt))
-				.where(eq(userItems.userId, steamUserId))
-				.orderBy(itemsPrice.createdAt)
-				.groupBy(itemsPrice.createdAt, currencyRates.code),
+				.innerJoin(currencyRates, eq(currencyRates.updateId, itemsPrice.updateId))
+				.innerJoin(updates, eq(itemsPrice.updateId, updates.id))
+				.where(and(eq(userItems.userId, steamUserId), eq(updates.userId, steamUserId)))
+				.orderBy(updates.updatedAt)
+				.groupBy(updates.updatedAt, currencyRates.code),
 		);
 
-		return { profileInfo: cachedUser, inventory, currencyRate, search: name, chartData };
+		return { profileInfo: cachedUser, inventory, currencyRate, chartData, lastUpdate };
 	} else {
 		const profileInfo = await getUserProfile(steamUserId);
 		if (!profileInfo) error(404, { message: "not found" });
 		const inventory = await getUserComputedInventory(steamUserId);
+
+		if (!inventory.length) error(400, { message: "Inventory doesn't contain any cases" });
 
 		const marketPromises = inventory.map(async (v) => {
 			const res = await fetch(endpoints.price(v.name));
@@ -243,7 +245,10 @@ export const load: PageServerLoad = async ({ params }) => {
 			.map((v) => v.value);
 		inventory.forEach((item) => {
 			const marketData = fulfilledMarketPromises.find((data) => data.id === item.id);
-			if (marketData) item.price = marketData.price;
+			if (marketData) {
+				item.price = marketData.price;
+				item.sum = item.price * item.count;
+			}
 		});
 		if (inventory.length !== fulfilledMarketPromises.length)
 			error(429, { message: "Too many requests" });
@@ -251,13 +256,9 @@ export const load: PageServerLoad = async ({ params }) => {
 		const currencyResponse = await fetch(endpoints.currency);
 		const currencyData: { date: string; usd: { eur: number; pln: number } } =
 			await currencyResponse.json();
-		const currencyRate = [
-			{ code: "PLN", rate: currencyData.usd.pln, createdAt: now },
-			{ code: "EUR", rate: currencyData.usd.eur, createdAt: now },
-		];
 
 		if (!cachedUser) {
-			await db.insert(users).values({ ...profileInfo, updatedAt: now });
+			await db.insert(users).values(profileInfo);
 			await db
 				.insert(items)
 				.values(inventory.map((v) => ({ id: v.id, iconHash: v.iconHash, name: v.name })))
@@ -265,10 +266,20 @@ export const load: PageServerLoad = async ({ params }) => {
 			await db
 				.insert(userItems)
 				.values(inventory.map((v) => ({ userId: profileInfo.id, itemId: v.id, count: v.count })));
-		} else await db.update(users).set({ updatedAt: now });
+		}
+		const [insertedUpdate] = await db
+			.insert(updates)
+			.values({ userId: profileInfo.id, updatedAt: now })
+			.returning();
+		const currencyRate = [
+			{ code: "PLN", rate: currencyData.usd.pln, updateId: insertedUpdate.id },
+			{ code: "EUR", rate: currencyData.usd.eur, updateId: insertedUpdate.id },
+		];
 		await db
 			.insert(itemsPrice)
-			.values(inventory.map((v) => ({ itemId: v.id, price: v.price, createdAt: now })));
+			.values(
+				inventory.map((v) => ({ itemId: v.id, price: v.price, updateId: insertedUpdate.id })),
+			);
 		await db.insert(currencyRates).values(currencyRate);
 
 		const chartData = await union(
@@ -276,34 +287,36 @@ export const load: PageServerLoad = async ({ params }) => {
 				.select({
 					sum: sql<number>`round(sum(item_price.price * user_item.count), 2)`.as("sum"),
 					code: sql<string>`"USD"`,
-					createdAt: itemsPrice.createdAt,
+					createdAt: updates.updatedAt,
 				})
 				.from(userItems)
 				.innerJoin(itemsPrice, eq(userItems.itemId, itemsPrice.itemId))
-				.where(eq(userItems.userId, steamUserId))
-				.groupBy(itemsPrice.createdAt),
+				.innerJoin(updates, eq(itemsPrice.updateId, updates.id))
+				.where(and(eq(userItems.userId, steamUserId), eq(updates.userId, steamUserId)))
+				.groupBy(updates.updatedAt),
 			db
 				.select({
 					sum: sql<number>`round(sum(item_price.price * user_item.count * currency_rates.rate), 2)`.as(
 						"sum",
 					),
 					code: currencyRates.code,
-					createdAt: itemsPrice.createdAt,
+					createdAt: updates.updatedAt,
 				})
 				.from(userItems)
 				.innerJoin(itemsPrice, eq(userItems.itemId, itemsPrice.itemId))
-				.innerJoin(currencyRates, eq(currencyRates.createdAt, itemsPrice.createdAt))
-				.where(eq(userItems.userId, steamUserId))
-				.orderBy(itemsPrice.createdAt)
-				.groupBy(itemsPrice.createdAt, currencyRates.code),
+				.innerJoin(currencyRates, eq(itemsPrice.updateId, currencyRates.updateId))
+				.innerJoin(updates, eq(itemsPrice.updateId, updates.id))
+				.where(and(eq(userItems.userId, steamUserId), eq(updates.userId, steamUserId)))
+				.orderBy(updates.updatedAt)
+				.groupBy(updates.updatedAt, currencyRates.code),
 		);
 
 		return {
 			profileInfo: { ...profileInfo, updatedAt: now },
 			inventory,
 			currencyRate,
-			search: name,
 			chartData,
+			lastUpdate: insertedUpdate,
 		};
 	}
 };

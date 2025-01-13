@@ -1,18 +1,26 @@
 import { relations, sql } from "drizzle-orm";
-import { sqliteTable, text, integer, real, int } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
 
 export const users = sqliteTable("user", {
 	id: text("id").primaryKey(),
 	nick: text("nick").notNull(),
 	avatarHash: text("avatar_hash").notNull(),
-	updatedAt: integer("updated_at", { mode: "timestamp" })
-		.notNull()
-		.default(sql`(unixepoch())`),
 });
 
 export const usersRelations = relations(users, ({ many }) => ({
 	items: many(userItems),
+	updates: many(updates),
 }));
+
+export const updates = sqliteTable("user_updates", {
+	id: integer("id").primaryKey({ autoIncrement: true }),
+	userId: text("user_id")
+		.notNull()
+		.references(() => users.id),
+	updatedAt: integer("updated_at", { mode: "timestamp" })
+		.notNull()
+		.default(sql`(unixepoch())`),
+});
 
 export const userItems = sqliteTable("user_item", {
 	userId: text("user_id")
@@ -21,7 +29,7 @@ export const userItems = sqliteTable("user_item", {
 	itemId: text("item_id")
 		.notNull()
 		.references(() => items.id),
-	count: int("count").notNull(),
+	count: integer("count").notNull(),
 });
 
 export const items = sqliteTable("item", {
@@ -40,15 +48,15 @@ export const itemsPrice = sqliteTable("item_price", {
 		.notNull()
 		.references(() => items.id),
 	price: real("price").notNull(),
-	createdAt: integer("created_at", { mode: "timestamp" })
+	updateId: integer("update_id")
 		.notNull()
-		.default(sql`(unixepoch())`),
+		.references(() => updates.id),
 });
 
 export const currencyRates = sqliteTable("currency_rates", {
 	code: text("code", { length: 3 }).notNull(),
 	rate: real("rate").notNull(),
-	createdAt: integer("created_at", { mode: "timestamp" })
+	updateId: integer("update_id")
 		.notNull()
-		.default(sql`(unixepoch())`),
+		.references(() => updates.id),
 });

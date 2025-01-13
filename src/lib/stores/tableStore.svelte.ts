@@ -1,6 +1,6 @@
 import { browser } from "$app/environment";
 
-const options = {
+export const tableStoreOptions = {
 	by: ["name", "count", "price", "sum"],
 	order: ["ASC", "DESC"],
 	view: ["grid", "list"],
@@ -15,9 +15,9 @@ export class TableStore {
 			let item = JSON.parse(localStorage.getItem(this.key) || "{}");
 			if (
 				!item ||
-				!options.by.includes(item.by) ||
-				!options.order.includes(item.order) ||
-				!options.view.includes(item.view)
+				!tableStoreOptions.by.includes(item.by) ||
+				!tableStoreOptions.order.includes(item.order) ||
+				!tableStoreOptions.view.includes(item.view)
 			)
 				item = { by: "sum", order: "DESC", view: "grid" };
 			this.value = item;
