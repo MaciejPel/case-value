@@ -5,7 +5,7 @@
 	import { Input } from "$lib/components/ui/input";
 	import { Search } from "lucide-svelte";
 
-	let userInput = $state("M4k3y");
+	let userInput = $state("");
 	let processing = $state(false);
 </script>
 

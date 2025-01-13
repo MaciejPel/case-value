@@ -86,11 +86,24 @@
 			.on("mouseover", (event, d) => {
 				tooltip
 					.style("display", "block")
-					.html(`Time: ${d3.timeFormat("%Y-%m-%d %H:%M:%S")(d.time)}<br>Total value: ${d.value}`)
+					.html(`Time: ${d3.timeFormat("%Y-%m-%d %H:%M")(d.time)}<br>Total value: ${d.value}`)
 					.style("left", `${event.pageX - (tooltip.node()?.clientWidth || 0) / 2}px`)
 					.style("top", `${event.pageY - 50}px`);
 			})
 			.on("mouseout", () => {
+				tooltip.style("display", "none");
+			})
+			.on("touchstart", (event, d) => {
+				tooltip
+					.style("display", "block")
+					.html(`Time: ${d3.timeFormat("%Y-%m-%d %H:%M")(d.time)}<br>Total value: ${d.value}`)
+					.style(
+						"left",
+						`${event.targetTouches[0].pageX - (tooltip.node()?.clientWidth || 0) / 2}px`,
+					)
+					.style("top", `${event.targetTouches[0].pageY - 50}px`);
+			})
+			.on("touchend", () => {
 				tooltip.style("display", "none");
 			});
 	});
@@ -136,11 +149,24 @@
 			.on("mouseover", (event, d) => {
 				tooltip
 					.style("display", "block")
-					.html(`Time: ${d3.timeFormat("%Y-%m-%d %H:%M:%S")(d.time)}<br>Total value: ${d.value}`)
+					.html(`Time: ${d3.timeFormat("%Y-%m-%d %H:%M")(d.time)}<br>Total value: ${d.value}`)
 					.style("left", `${event.pageX - (tooltip.node()?.clientWidth || 0) / 2}px`)
 					.style("top", `${event.pageY - 50}px`);
 			})
 			.on("mouseout", () => {
+				tooltip.style("display", "none");
+			})
+			.on("touchstart", (event, d) => {
+				tooltip
+					.style("display", "block")
+					.html(`Time: ${d3.timeFormat("%Y-%m-%d %H:%M")(d.time)}<br>Total value: ${d.value}`)
+					.style(
+						"left",
+						`${event.targetTouches[0].pageX - (tooltip.node()?.clientWidth || 0) / 2}px`,
+					)
+					.style("top", `${event.targetTouches[0].pageY - 50}px`);
+			})
+			.on("touchend", () => {
 				tooltip.style("display", "none");
 			});
 	}

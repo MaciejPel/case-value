@@ -174,7 +174,6 @@ export const load: PageServerLoad = async ({ params }) => {
 	if (cachedUser) {
 		const refreshAvailableAt = new Date(cachedUser.updatedAt.getTime());
 		refreshAvailableAt.setHours(refreshAvailableAt.getHours() + 2);
-		console.log(refreshAvailableAt, now);
 		useCache = refreshAvailableAt > now;
 	}
 

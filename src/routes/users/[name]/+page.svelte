@@ -149,9 +149,7 @@
 											value={tableStore.value.view}
 											onValueChange={(newValue) => (tableStore.value.view = newValue)}
 										>
-											<Select.Trigger class="capitalize">
-												{tableStore.value.view}
-											</Select.Trigger>
+											<Select.Trigger class="capitalize">{tableStore.value.view}</Select.Trigger>
 											<Select.Content>
 												<Select.Group>
 													{#each ["list", "grid"] as field}
@@ -210,10 +208,7 @@
 							{#each data.inventory.sort((a, b) => {
 								const key = tableStore.value.by as "name" | "price" | "count" | "sum";
 								const direction = tableStore.value.order === "ASC" ? 1 : -1;
-								if (key === "name") {
-									console.log(direction);
-									return direction * a[key].localeCompare(b[key]);
-								}
+								if (key === "name") return direction * a[key].localeCompare(b[key]);
 								return direction * ((a[key] as number) - (b[key] as number));
 							}) as entry}
 								<div
@@ -250,20 +245,17 @@
 								<Table.Header>
 									<Table.Row>
 										<Table.Head class="w-[100px]">Image</Table.Head>
-										<Table.Head>Name</Table.Head>
-										<Table.Head class="text-right">Count</Table.Head>
-										<Table.Head class="text-right">Price</Table.Head>
-										<Table.Head class="text-right">Sum</Table.Head>
+										<Table.Head class="text-nowrap">Name</Table.Head>
+										<Table.Head class="text-nowrap text-right">Count</Table.Head>
+										<Table.Head class="text-nowrap text-right">Price</Table.Head>
+										<Table.Head class="text-nowrap text-right">Sum</Table.Head>
 									</Table.Row>
 								</Table.Header>
 								<Table.Body>
 									{#each data.inventory.sort((a, b) => {
 										const key = tableStore.value.by as "name" | "price" | "count" | "sum";
 										const direction = tableStore.value.order === "ASC" ? 1 : -1;
-										if (key === "name") {
-											console.log(direction);
-											return direction * a[key].localeCompare(b[key]);
-										}
+										if (key === "name") return direction * a[key].localeCompare(b[key]);
 										return direction * ((a[key] as number) - (b[key] as number));
 									}) as entry}
 										<Table.Row>
@@ -273,14 +265,14 @@
 													alt={entry.name}
 												/>
 											</Table.Cell>
-											<Table.Cell>{entry.name}</Table.Cell>
-											<Table.Cell class="text-right">{entry.count}</Table.Cell>
-											<Table.Cell class="text-right">
+											<Table.Cell class="text-nowrap">{entry.name}</Table.Cell>
+											<Table.Cell class="text-nowrap text-right">{entry.count}</Table.Cell>
+											<Table.Cell class="text-nowrap text-right">
 												{currencies[currencyStore.value].currencyFormatter(
 													(entry.price * currentCurrencyRate).toFixed(2),
 												)}
 											</Table.Cell>
-											<Table.Cell class="text-right">
+											<Table.Cell class="text-nowrap text-right">
 												{currencies[currencyStore.value].currencyFormatter(
 													(entry.price * currentCurrencyRate * entry.count).toFixed(2),
 												)}
