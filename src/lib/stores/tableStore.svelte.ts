@@ -19,7 +19,7 @@ export class TableStore {
 				!options.order.includes(item.order) ||
 				!options.view.includes(item.view)
 			)
-				item = { by: "price", order: "DESC", view: "grid" };
+				item = { by: "sum", order: "DESC", view: "grid" };
 			this.value = item;
 		}
 
