@@ -1,5 +1,5 @@
 import { relations, sql } from "drizzle-orm";
-import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, primaryKey } from "drizzle-orm/sqlite-core";
 
 export const users = sqliteTable("user", {
 	id: text("id").primaryKey(),
@@ -22,15 +22,21 @@ export const updates = sqliteTable("user_updates", {
 		.default(sql`(unixepoch())`),
 });
 
-export const userItems = sqliteTable("user_item", {
-	userId: text("user_id")
-		.notNull()
-		.references(() => users.id),
-	itemId: text("item_id")
-		.notNull()
-		.references(() => items.id),
-	count: integer("count").notNull(),
-});
+export const userItems = sqliteTable(
+	"user_item",
+	{
+		userId: text("user_id")
+			.notNull()
+			.references(() => users.id),
+		itemId: text("item_id")
+			.notNull()
+			.references(() => items.id),
+		count: integer("count").notNull(),
+	},
+	(table) => {
+		return { pk: primaryKey({ columns: [table.userId, table.itemId] }) };
+	},
+);
 
 export const items = sqliteTable("item", {
 	id: text("id").primaryKey(),

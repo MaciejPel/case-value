@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { navigating, page } from "$app/state";
-	import { enhance } from "$app/forms";
-	import { goto } from "$app/navigation";
+	import { applyAction, enhance } from "$app/forms";
+	import { goto, invalidateAll } from "$app/navigation";
 	import { browser } from "$app/environment";
-	import type { PageData } from "./$types";
+	import type { ActionData, PageData } from "./$types";
 	import { Badge } from "$lib/components/ui/badge";
 	import { Button } from "$lib/components/ui/button";
 	import Input from "$lib/components/ui/input/input.svelte";
@@ -22,8 +22,9 @@
 	} from "lucide-svelte";
 	import { currencyStore } from "$lib/stores/currencyStore.svelte";
 	import { tableStore, tableStoreOptions } from "$lib/stores/tableStore.svelte";
+	import { toast } from "svelte-sonner";
 
-	let { data }: { data: PageData } = $props();
+	let { data, form }: { data: PageData; form: ActionData } = $props();
 
 	let userInput = $state(page.params.name);
 	let processing = $state(false);
@@ -60,11 +61,11 @@
 </script>
 
 <svelte:head>
-	<title>{data.profileInfo.nick} | CaseValue</title>
+	<title>{data.profileInfo.nick} | case value</title>
 </svelte:head>
 <div class="flex w-full flex-col gap-4">
 	<div class="flex gap-2">
-		<Button href="/" size="icon" variant="outline"><ArrowLeft /></Button>
+		<Button href="/" size="icon" variant="outline" class="shrink-0"><ArrowLeft /></Button>
 		<form
 			method="post"
 			class="flex w-full items-center gap-2"
@@ -110,8 +111,48 @@
 							<span class="sr-only">Profile actions</span>
 						</DropdownMenu.Trigger>
 						<DropdownMenu.Content align="end">
-							<DropdownMenu.Item disabled={true}>Update profile</DropdownMenu.Item>
-							<DropdownMenu.Item disabled={true}>Update inventory</DropdownMenu.Item>
+							<form
+								method="post"
+								use:enhance={() => {
+									return async ({ result }) => {
+										if (result.status === 200) {
+											toast("Profile updated");
+											invalidateAll();
+										} else toast(form?.message || "Something went wrong");
+										await applyAction(result);
+									};
+								}}
+								action="?/updateProfile"
+							>
+								<DropdownMenu.Item>
+									<input
+										type="submit"
+										value="Update profile"
+										class="h-full w-full text-left outline-0"
+									/>
+								</DropdownMenu.Item>
+							</form>
+							<form
+								method="post"
+								use:enhance={() => {
+									return async ({ result }) => {
+										if (result.status === 200) {
+											toast("Profile updated");
+											invalidateAll();
+										} else toast(form?.message || "Something went wrong");
+										await applyAction(result);
+									};
+								}}
+								action="?/updateInventory"
+							>
+								<DropdownMenu.Item>
+									<input
+										type="submit"
+										value="Update inventory"
+										class="h-full w-full text-left outline-0"
+									/>
+								</DropdownMenu.Item>
+							</form>
 							<DropdownMenu.Item disabled={true}>Update prices</DropdownMenu.Item>
 						</DropdownMenu.Content>
 					</DropdownMenu.Root>

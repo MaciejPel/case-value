@@ -1,9 +1,9 @@
-import { error, type Actions } from "@sveltejs/kit";
+import { error, fail, type Actions } from "@sveltejs/kit";
 import type { PageServerLoad } from "./$types";
 import { STEAM_API_KEY } from "$env/static/private";
 import { db } from "$lib/server/db";
 import { currencyRates, items, itemsPrice, updates, userItems, users } from "$lib/server/db/schema";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, notInArray, sql } from "drizzle-orm";
 import { union } from "drizzle-orm/sqlite-core";
 
 interface Inventory {
@@ -227,7 +227,7 @@ export const load: PageServerLoad = async ({ params }) => {
 		return { profileInfo: cachedUser, inventory, currencyRate, chartData, lastUpdate };
 	} else {
 		const profileInfo = await getUserProfile(steamUserId);
-		if (!profileInfo) error(404, { message: "not found" });
+		if (!profileInfo) error(404, { message: "Steam profile not found" });
 		const inventory = await getUserComputedInventory(steamUserId);
 
 		if (!inventory.length) error(400, { message: "Inventory doesn't contain any cases" });
@@ -251,7 +251,7 @@ export const load: PageServerLoad = async ({ params }) => {
 			}
 		});
 		if (inventory.length !== fulfilledMarketPromises.length)
-			error(429, { message: "Too many requests" });
+			error(429, { message: "Too many requests, couldn't fetch item prices" });
 
 		const currencyResponse = await fetch(endpoints.currency);
 		const currencyData: { date: string; usd: { eur: number; pln: number } } =
@@ -322,6 +322,53 @@ export const load: PageServerLoad = async ({ params }) => {
 };
 
 export const actions = {
-	updateProfile: async () => {},
-	updateInventory: async () => {},
+	updateProfile: async ({ params }) => {
+		const { name } = params;
+
+		if (!name) return fail(404, { message: "Missing name parameter" });
+		const steamUser = await getUserInfo(name);
+		if (steamUser.response.success !== 1) return fail(404, { message: "Steam profile not found" });
+		const steamUserId = steamUser.response.steamid;
+
+		const profileInfo = await getUserProfile(steamUserId);
+		await db.update(users).set(profileInfo).where(eq(users.id, steamUserId));
+		return { success: true };
+	},
+	updateInventory: async ({ params }) => {
+		const { name } = params;
+
+		if (!name) return fail(404, { message: "Missing name parameter" });
+		const steamUser = await getUserInfo(name);
+		if (steamUser.response.success !== 1) return fail(404, { message: "Steam profile not found" });
+		const steamUserId = steamUser.response.steamid;
+
+		const inventory = await getUserComputedInventory(steamUserId);
+		if (!inventory.length) return fail(400, { message: "Inventory doesn't contain any cases" });
+
+		await db
+			.insert(items)
+			.values(inventory.map((v) => ({ id: v.id, iconHash: v.iconHash, name: v.name })))
+			.onConflictDoNothing({ target: items.id });
+		for (const i of inventory) {
+			await db
+				.update(userItems)
+				.set({ userId: steamUserId, itemId: i.id, count: i.count })
+				.where(and(eq(userItems.userId, steamUserId), eq(userItems.itemId, i.id)));
+		}
+		await db
+			.insert(userItems)
+			.values(inventory.map((v) => ({ userId: steamUserId, itemId: v.id, count: v.count })))
+			.onConflictDoNothing({ target: [userItems.itemId, userItems.userId] });
+		await db.delete(userItems).where(
+			and(
+				eq(userItems.userId, steamUserId),
+				notInArray(
+					userItems.itemId,
+					inventory.map((v) => v.id),
+				),
+			),
+		);
+
+		return { success: true };
+	},
 } satisfies Actions;

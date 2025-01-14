@@ -10,7 +10,7 @@
 </script>
 
 <svelte:head>
-	<title>Search | CaseValue</title>
+	<title>Search | case value</title>
 </svelte:head>
 <div class="flex h-[calc(100svh-3rem)] items-center justify-center">
 	<form
@@ -22,15 +22,20 @@
 			goto(`/users/${userInput}`);
 		}}
 	>
-		<Input
-			name="user"
-			type="text"
-			placeholder="Steam profile name"
-			bind:value={userInput}
-			disabled={processing}
-		/>
-		<Button type="submit" size="icon" class="shrink-0" disabled={!userInput || processing}>
-			<Search />
-		</Button>
+		<div class="flex w-full flex-col gap-2">
+			<h2 class="text-center text-3xl font-semibold">case value</h2>
+			<div class="flex items-center gap-2">
+				<Input
+					name="user"
+					type="text"
+					placeholder="Steam profile name"
+					bind:value={userInput}
+					disabled={processing}
+				/>
+				<Button type="submit" size="icon" class="shrink-0" disabled={!userInput || processing}>
+					<Search />
+				</Button>
+			</div>
+		</div>
 	</form>
 </div>

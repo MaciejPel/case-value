@@ -8,7 +8,7 @@
 <DropdownMenu.Root>
 	<DropdownMenu.Trigger class="{buttonVariants({ variant: 'outline', size: 'sm' })} h-auto">
 		<span>{currencyStore.value}</span>
-		<span class="sr-only">Toggle theme</span>
+		<span class="sr-only">Change currency</span>
 	</DropdownMenu.Trigger>
 	<DropdownMenu.Content align="end">
 		{#each currencies as currency}
