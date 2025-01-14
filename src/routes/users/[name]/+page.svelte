@@ -137,7 +137,7 @@
 								use:enhance={() => {
 									return async ({ result }) => {
 										if (result.status === 200) {
-											toast("Profile updated");
+											toast("Inventory updated");
 											invalidateAll();
 										} else toast(form?.message || "Something went wrong");
 										await applyAction(result);
