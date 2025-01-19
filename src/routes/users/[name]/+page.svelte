@@ -360,7 +360,7 @@
 												<img
 													src="https://community.cloudflare.steamstatic.com/economy/image/{itemsObj[
 														entry.id
-													].name}"
+													].iconHash}"
 													alt={itemsObj[entry.id].name}
 												/>
 											</Table.Cell>
