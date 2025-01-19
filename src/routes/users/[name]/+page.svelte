@@ -12,6 +12,7 @@
 	import Label from "$lib/components/ui/label/label.svelte";
 	import * as Select from "$lib/components/ui/select";
 	import * as Table from "$lib/components/ui/table";
+	import { toast } from "svelte-sonner";
 	import TimeChart from "$lib/components/TimeChart.svelte";
 	import {
 		ArrowLeft,
@@ -22,11 +23,11 @@
 	} from "lucide-svelte";
 	import { currencyStore } from "$lib/stores/currencyStore.svelte";
 	import { tableStore, tableStoreOptions } from "$lib/stores/tableStore.svelte";
-	import { toast } from "svelte-sonner";
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
 	let userInput = $state(page.params.name);
+	let caseIdFilter = $state("");
 	let processing = $state(false);
 
 	const currencies: {
@@ -37,20 +38,53 @@
 		EUR: { name: "EUR", currencyFormatter: (price) => `€ ${price}` },
 	};
 
-	const currentCurrencyRate = $derived(
+	let itemsObj = $derived(
+		data.items.reduce(
+			(acc, v) => {
+				acc[v.id] = { name: v.name, iconHash: v.iconHash };
+				return acc;
+			},
+			{} as { [key: string]: { name: string; iconHash: string } },
+		),
+	);
+	let inventoryOverTime = $derived(
+		Object.values(
+			data.inventoryOverTime.reduce(
+				(acc, v) => {
+					const dateKey = v.createdAt.toISOString();
+					const item = { id: v.id, price: v.price, count: v.count, sum: v.sum };
+					if (!acc[dateKey]) acc[dateKey] = { date: v.createdAt, items: [] };
+					acc[dateKey].items.push(item);
+					return acc;
+				},
+				{} as {
+					[key: string]: {
+						date: Date;
+						items: { id: string; price: number; count: number; sum: number }[];
+					};
+				},
+			),
+		),
+	);
+	let lastUpdate = $derived(inventoryOverTime.at(-1));
+	let currentCurrencyRate = $derived(
 		currencyStore.value === "USD"
 			? 1
-			: data.currencyRate.find((v) => v.code === currencyStore.value)?.rate || 0,
+			: data.currencyRatesOverTime.find(
+					(v) =>
+						v.code === currencyStore.value &&
+						v.createdAt.toISOString() === lastUpdate?.date.toISOString(),
+				)?.rate || 0,
 	);
-	const totalCaseCount = $derived(data.inventory.reduce((acc, v) => acc + v.count, 0));
-	const totalCaseValue = $derived(
-		data.inventory.reduce((acc, v) => acc + v.sum * currentCurrencyRate, 0),
+	let totalCaseCount = $derived(lastUpdate?.items.reduce((acc, v) => acc + v.count, 0));
+	let totalCaseValue = $derived(
+		lastUpdate?.items.reduce((acc, v) => acc + v.count * v.price * currentCurrencyRate, 0) || 0,
 	);
-	const computedData = $derived(
-		[...data.inventory].sort((a, b) => {
+	let sortedData = $derived(
+		[...(lastUpdate?.items || [])].sort((a, b) => {
 			const key = tableStore.value.by as "name" | "price" | "count" | "sum";
 			const direction = tableStore.value.order === "ASC" ? 1 : -1;
-			if (key === "name") return direction * a[key].localeCompare(b[key]);
+			if (key === "name") return direction * itemsObj[a.id].name.localeCompare(itemsObj[b.id].name);
 			return direction * ((a[key] as number) - (b[key] as number));
 		}),
 	);
@@ -160,7 +194,7 @@
 				<div class="flex flex-col text-sm">
 					<div class="flex justify-between gap-4 border-y-[1px] p-2">
 						<span class="text-nowrap">Last price update</span>
-						<span class="text-nowrap">{data.lastUpdate.updatedAt.toLocaleString()}</span>
+						<span class="text-nowrap">{lastUpdate?.date.toLocaleString()}</span>
 					</div>
 					<div class="flex justify-between gap-4 p-2">
 						<span>Case count</span>
@@ -178,7 +212,7 @@
 		<div class="flex w-full flex-col gap-4">
 			<div
 				class="relative h-full min-h-96 w-full grow rounded-xl border-[1px] p-6 {!browser ||
-				!data.inventory.length
+				!lastUpdate?.items.length
 					? 'flex items-center justify-center'
 					: ''}"
 			>
@@ -255,18 +289,26 @@
 							</div>
 						</Popover.Content>
 					</Popover.Root>
-					{#if !data.inventory.length}
+					{#if !sortedData.length}
 						<div>Cases not found in this profile</div>
 					{:else if tableStore.value.view === "grid"}
 						<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4">
-							{#each data.inventory as entry (entry.id)}
+							<!-- svelte-ignore a11y_click_events_have_key_events -->
+							<!-- svelte-ignore a11y_no_static_element_interactions -->
+							{#each sortedData as entry (entry.id)}
 								<div
-									class="flex flex-col justify-between gap-2 rounded-xl p-2 hover:bg-primary-foreground"
+									class="flex cursor-pointer flex-col justify-between gap-2 rounded-xl p-2 hover:bg-primary-foreground"
+									onclick={() => {
+										if (caseIdFilter === entry.id) caseIdFilter = "";
+										else caseIdFilter = entry.id;
+									}}
 								>
 									<div class="relative">
 										<img
-											src="https://community.cloudflare.steamstatic.com/economy/image/{entry.iconHash}"
-											alt={entry.name}
+											src="https://community.cloudflare.steamstatic.com/economy/image/{itemsObj[
+												entry.id
+											].iconHash}"
+											alt={itemsObj[entry.id].name}
 										/>
 										<Badge variant="secondary" class="absolute left-0 top-0 cursor-default">
 											{entry.count}x
@@ -276,12 +318,17 @@
 												(entry.price * currentCurrencyRate).toFixed(2),
 											)}
 										</Badge>
-										<div class="text-balance text-center text-xs">{entry.name}</div>
+										{#if entry.id === caseIdFilter}
+											<div
+												class="absolute bottom-0 right-0 h-4 w-4 animate-pulse rounded-full bg-teal-300"
+											></div>
+										{/if}
+										<div class="text-balance text-center text-xs">{itemsObj[entry.id].name}</div>
 									</div>
 									<div class="flex flex-col items-center gap-2">
 										<Badge variant="default" class="cursor-default self-center">
 											{currencies[currencyStore.value].currencyFormatter(
-												(entry.price * currentCurrencyRate * entry.count).toFixed(2),
+												(entry.sum * currentCurrencyRate).toFixed(2),
 											)}
 										</Badge>
 									</div>
@@ -293,7 +340,7 @@
 							<Table.Root>
 								<Table.Header>
 									<Table.Row>
-										<Table.Head class="w-[100px]">Image</Table.Head>
+										<Table.Head class="w-24">Image</Table.Head>
 										<Table.Head class="text-nowrap">Name</Table.Head>
 										<Table.Head class="text-nowrap text-right">Count</Table.Head>
 										<Table.Head class="text-nowrap text-right">Price</Table.Head>
@@ -301,15 +348,23 @@
 									</Table.Row>
 								</Table.Header>
 								<Table.Body>
-									{#each computedData as entry (entry.id)}
-										<Table.Row>
+									{#each sortedData as entry (entry.id)}
+										<Table.Row
+											class="cursor-pointer"
+											onclick={() => {
+												if (caseIdFilter === entry.id) caseIdFilter = "";
+												else caseIdFilter = entry.id;
+											}}
+										>
 											<Table.Cell>
 												<img
-													src="https://community.cloudflare.steamstatic.com/economy/image/{entry.iconHash}"
-													alt={entry.name}
+													src="https://community.cloudflare.steamstatic.com/economy/image/{itemsObj[
+														entry.id
+													].name}"
+													alt={itemsObj[entry.id].name}
 												/>
 											</Table.Cell>
-											<Table.Cell class="text-nowrap">{entry.name}</Table.Cell>
+											<Table.Cell class="text-nowrap">{itemsObj[entry.id].name}</Table.Cell>
 											<Table.Cell class="text-nowrap text-right">{entry.count}</Table.Cell>
 											<Table.Cell class="text-nowrap text-right">
 												{currencies[currencyStore.value].currencyFormatter(
@@ -318,7 +373,7 @@
 											</Table.Cell>
 											<Table.Cell class="text-nowrap text-right">
 												{currencies[currencyStore.value].currencyFormatter(
-													(entry.price * currentCurrencyRate * entry.count).toFixed(2),
+													(entry.sum * currentCurrencyRate).toFixed(2),
 												)}
 											</Table.Cell>
 										</Table.Row>
@@ -329,13 +384,25 @@
 					{/if}
 				{/if}
 			</div>
-			{#if browser && data.chartData.length}
+			{#if browser && data.inventoryOverTime.length}
 				<div class="min-h-96 grow">
-					<TimeChart
-						data={data.chartData
-							.filter((v) => v.code === currencyStore.value)
-							.map((v) => ({ time: v.createdAt, value: v.sum }))}
-					/>
+					{#if caseIdFilter}
+						<TimeChart
+							data={data.inventoryOverTime
+								.filter((v) => v.id === caseIdFilter)
+								.map((v) => ({
+									time: v.createdAt,
+									value: Number((v.price * currentCurrencyRate).toFixed(2)),
+								}))}
+						/>
+					{:else}
+						<TimeChart
+							data={inventoryOverTime.map((v) => {
+								const value = v.items.reduce((acc, v) => acc + v.price * v.count, 0);
+								return { time: v.date, value: Number((value * currentCurrencyRate).toFixed(2)) };
+							})}
+						/>
+					{/if}
 				</div>
 			{/if}
 		</div>

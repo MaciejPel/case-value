@@ -4,7 +4,6 @@ import { STEAM_API_KEY } from "$env/static/private";
 import { db } from "$lib/server/db";
 import { currencyRates, items, itemsPrice, updates, userItems, users } from "$lib/server/db/schema";
 import { and, desc, eq, notInArray, sql } from "drizzle-orm";
-import { union } from "drizzle-orm/sqlite-core";
 
 interface Inventory {
 	assets: Asset[];
@@ -178,53 +177,39 @@ export const load: PageServerLoad = async ({ params }) => {
 	}
 
 	if (useCache && cachedUser) {
-		const inventory = await db
-			.select({
-				id: items.id,
-				iconHash: items.iconHash,
-				name: items.name,
-				price: itemsPrice.price,
-				count: userItems.count,
-				sum: sql<number>`round(item_price.price * user_item.count, 2)`.as("sum"),
-			})
+		const userItemsRecords = await db
+			.select({ id: items.id, name: items.name, iconHash: items.iconHash })
 			.from(userItems)
 			.innerJoin(items, eq(userItems.itemId, items.id))
-			.innerJoin(itemsPrice, eq(items.id, itemsPrice.itemId))
-			.where(and(eq(userItems.userId, steamUserId), eq(itemsPrice.updateId, lastUpdate.id)));
-		const currencyRate = await db
-			.select()
-			.from(currencyRates)
-			.where(eq(currencyRates.updateId, lastUpdate.id));
-		const chartData = await union(
-			db
-				.select({
-					sum: sql<number>`round(sum(item_price.price * user_item.count), 2)`.as("sum"),
-					code: sql<string>`"USD"`,
-					createdAt: updates.updatedAt,
-				})
-				.from(userItems)
-				.innerJoin(itemsPrice, eq(userItems.itemId, itemsPrice.itemId))
-				.innerJoin(updates, eq(itemsPrice.updateId, updates.id))
-				.where(and(eq(userItems.userId, steamUserId), eq(updates.userId, steamUserId)))
-				.groupBy(updates.updatedAt),
-			db
-				.select({
-					sum: sql<number>`round(sum(item_price.price * user_item.count * currency_rates.rate), 2)`.as(
-						"sum",
-					),
-					code: currencyRates.code,
-					createdAt: updates.updatedAt,
-				})
-				.from(userItems)
-				.innerJoin(itemsPrice, eq(userItems.itemId, itemsPrice.itemId))
-				.innerJoin(currencyRates, eq(currencyRates.updateId, itemsPrice.updateId))
-				.innerJoin(updates, eq(itemsPrice.updateId, updates.id))
-				.where(and(eq(userItems.userId, steamUserId), eq(updates.userId, steamUserId)))
-				.orderBy(updates.updatedAt)
-				.groupBy(updates.updatedAt, currencyRates.code),
-		);
+			.where(eq(userItems.userId, steamUserId));
 
-		return { profileInfo: cachedUser, inventory, currencyRate, chartData, lastUpdate };
+		const currencyRatesOverTime = await db
+			.select({ code: currencyRates.code, rate: currencyRates.rate, createdAt: updates.updatedAt })
+			.from(updates)
+			.innerJoin(currencyRates, eq(currencyRates.updateId, updates.id))
+			.where(eq(updates.userId, steamUserId));
+
+		const inventoryOverTime = await db
+			.select({
+				id: items.id,
+				price: itemsPrice.price,
+				count: userItems.count,
+				sum: sql<number>`item_price.price * user_item.count`.as("sum"),
+				createdAt: updates.updatedAt,
+			})
+			.from(userItems)
+			.innerJoin(itemsPrice, eq(userItems.itemId, itemsPrice.itemId))
+			.innerJoin(items, eq(userItems.itemId, items.id))
+			.innerJoin(updates, eq(itemsPrice.updateId, updates.id))
+			.where(and(eq(userItems.userId, steamUserId), eq(updates.userId, steamUserId)))
+			.orderBy(updates.updatedAt);
+
+		return {
+			profileInfo: cachedUser,
+			items: userItemsRecords,
+			currencyRatesOverTime,
+			inventoryOverTime,
+		};
 	} else {
 		const profileInfo = await getUserProfile(steamUserId);
 		if (!profileInfo) error(404, { message: "Steam profile not found" });
@@ -282,41 +267,38 @@ export const load: PageServerLoad = async ({ params }) => {
 			);
 		await db.insert(currencyRates).values(currencyRate);
 
-		const chartData = await union(
-			db
-				.select({
-					sum: sql<number>`round(sum(item_price.price * user_item.count), 2)`.as("sum"),
-					code: sql<string>`"USD"`,
-					createdAt: updates.updatedAt,
-				})
-				.from(userItems)
-				.innerJoin(itemsPrice, eq(userItems.itemId, itemsPrice.itemId))
-				.innerJoin(updates, eq(itemsPrice.updateId, updates.id))
-				.where(and(eq(userItems.userId, steamUserId), eq(updates.userId, steamUserId)))
-				.groupBy(updates.updatedAt),
-			db
-				.select({
-					sum: sql<number>`round(sum(item_price.price * user_item.count * currency_rates.rate), 2)`.as(
-						"sum",
-					),
-					code: currencyRates.code,
-					createdAt: updates.updatedAt,
-				})
-				.from(userItems)
-				.innerJoin(itemsPrice, eq(userItems.itemId, itemsPrice.itemId))
-				.innerJoin(currencyRates, eq(itemsPrice.updateId, currencyRates.updateId))
-				.innerJoin(updates, eq(itemsPrice.updateId, updates.id))
-				.where(and(eq(userItems.userId, steamUserId), eq(updates.userId, steamUserId)))
-				.orderBy(updates.updatedAt)
-				.groupBy(updates.updatedAt, currencyRates.code),
-		);
+		const userItemsRecords = await db
+			.select({ id: items.id, name: items.name, iconHash: items.iconHash })
+			.from(userItems)
+			.innerJoin(items, eq(userItems.itemId, items.id))
+			.where(eq(userItems.userId, steamUserId));
+
+		const currencyRatesOverTime = await db
+			.select({ code: currencyRates.code, rate: currencyRates.rate, createdAt: updates.updatedAt })
+			.from(updates)
+			.innerJoin(currencyRates, eq(currencyRates.updateId, updates.id))
+			.where(eq(updates.userId, steamUserId));
+
+		const inventoryOverTime = await db
+			.select({
+				id: items.id,
+				price: itemsPrice.price,
+				count: userItems.count,
+				sum: sql<number>`item_price.price * user_item.count`.as("sum"),
+				createdAt: updates.updatedAt,
+			})
+			.from(userItems)
+			.innerJoin(itemsPrice, eq(userItems.itemId, itemsPrice.itemId))
+			.innerJoin(items, eq(userItems.itemId, items.id))
+			.innerJoin(updates, eq(itemsPrice.updateId, updates.id))
+			.where(and(eq(userItems.userId, steamUserId), eq(updates.userId, steamUserId)))
+			.orderBy(updates.updatedAt);
 
 		return {
 			profileInfo: { ...profileInfo, updatedAt: now },
-			inventory,
-			currencyRate,
-			chartData,
-			lastUpdate: insertedUpdate,
+			items: userItemsRecords,
+			inventoryOverTime,
+			currencyRatesOverTime,
 		};
 	}
 };

@@ -16,7 +16,7 @@
 
 	onMount(() => {
 		width = chartContainer.clientWidth - margin.left - margin.right;
-		height = 600 - margin.top - margin.bottom;
+		height = 300 - margin.top - margin.bottom;
 
 		svg = d3
 			.select(chartContainer)
@@ -33,7 +33,10 @@
 
 		y = d3
 			.scaleLinear()
-			.domain([0, d3.max(data, (d) => d.value)] as [number, number])
+			.domain([
+				Math.max(0, (d3.min(data, (d) => d.value) || 0) - 0.5),
+				d3.max(data, (d) => d.value),
+			] as [number, number])
 			.nice()
 			.range([height, 0]);
 
@@ -86,7 +89,7 @@
 			.on("mouseover", (event, d) => {
 				tooltip
 					.style("display", "block")
-					.html(`Time: ${d3.timeFormat("%Y-%m-%d %H:%M")(d.time)}<br>Total value: ${d.value}`)
+					.html(`Time: ${d3.timeFormat("%Y-%m-%d %H:%M")(d.time)}<br>Value: ${d.value}`)
 					.style("left", `${event.pageX - (tooltip.node()?.clientWidth || 0) / 2}px`)
 					.style("top", `${event.pageY - 50}px`);
 			})
@@ -96,7 +99,7 @@
 			.on("touchstart", (event, d) => {
 				tooltip
 					.style("display", "block")
-					.html(`Time: ${d3.timeFormat("%Y-%m-%d %H:%M")(d.time)}<br>Total value: ${d.value}`)
+					.html(`Time: ${d3.timeFormat("%Y-%m-%d %H:%M")(d.time)}<br>Value: ${d.value}`)
 					.style(
 						"left",
 						`${event.targetTouches[0].pageX - (tooltip.node()?.clientWidth || 0) / 2}px`,
@@ -112,7 +115,10 @@
 		if (!svg) return;
 
 		x.domain(d3.extent(data, (d) => d.time) as [Date, Date]);
-		y.domain([0, d3.max(data, (d) => d.value)] as [number, number]).nice();
+		y.domain([
+			Math.max(0, (d3.min(data, (d) => d.value) || 0) - 0.5),
+			d3.max(data, (d) => d.value),
+		] as [number, number]).nice();
 
 		svg.selectAll("*").remove();
 
@@ -149,7 +155,7 @@
 			.on("mouseover", (event, d) => {
 				tooltip
 					.style("display", "block")
-					.html(`Time: ${d3.timeFormat("%Y-%m-%d %H:%M")(d.time)}<br>Total value: ${d.value}`)
+					.html(`Time: ${d3.timeFormat("%Y-%m-%d %H:%M")(d.time)}<br>Value: ${d.value}`)
 					.style("left", `${event.pageX - (tooltip.node()?.clientWidth || 0) / 2}px`)
 					.style("top", `${event.pageY - 50}px`);
 			})
@@ -159,7 +165,7 @@
 			.on("touchstart", (event, d) => {
 				tooltip
 					.style("display", "block")
-					.html(`Time: ${d3.timeFormat("%Y-%m-%d %H:%M")(d.time)}<br>Total value: ${d.value}`)
+					.html(`Time: ${d3.timeFormat("%Y-%m-%d %H:%M")(d.time)}<br>Value: ${d.value}`)
 					.style(
 						"left",
 						`${event.targetTouches[0].pageX - (tooltip.node()?.clientWidth || 0) / 2}px`,
@@ -171,9 +177,7 @@
 			});
 	}
 
-	$effect(() => {
-		if (data.length) updateChart();
-	});
+	$effect(updateChart);
 </script>
 
 <div bind:this={chartContainer} class="mb-12 text-xs"></div>
