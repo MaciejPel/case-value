@@ -176,7 +176,7 @@ export const load: PageServerLoad = async ({ params }) => {
 		useCache = refreshAvailableAt > now;
 	}
 
-	if (useCache && cachedUser) {
+	const getUserData = async (steamUserId: string) => {
 		const userItemsRecords = await db
 			.select({ id: items.id, name: items.name, iconHash: items.iconHash })
 			.from(userItems)
@@ -203,6 +203,13 @@ export const load: PageServerLoad = async ({ params }) => {
 			.innerJoin(updates, eq(itemsPrice.updateId, updates.id))
 			.where(and(eq(userItems.userId, steamUserId), eq(updates.userId, steamUserId)))
 			.orderBy(updates.updatedAt);
+
+		return { userItemsRecords, currencyRatesOverTime, inventoryOverTime };
+	};
+
+	if (useCache && cachedUser) {
+		const { userItemsRecords, currencyRatesOverTime, inventoryOverTime } =
+			await getUserData(steamUserId);
 
 		return {
 			profileInfo: cachedUser,
@@ -267,32 +274,8 @@ export const load: PageServerLoad = async ({ params }) => {
 			);
 		await db.insert(currencyRates).values(currencyRate);
 
-		const userItemsRecords = await db
-			.select({ id: items.id, name: items.name, iconHash: items.iconHash })
-			.from(userItems)
-			.innerJoin(items, eq(userItems.itemId, items.id))
-			.where(eq(userItems.userId, steamUserId));
-
-		const currencyRatesOverTime = await db
-			.select({ code: currencyRates.code, rate: currencyRates.rate, createdAt: updates.updatedAt })
-			.from(updates)
-			.innerJoin(currencyRates, eq(currencyRates.updateId, updates.id))
-			.where(eq(updates.userId, steamUserId));
-
-		const inventoryOverTime = await db
-			.select({
-				id: items.id,
-				price: itemsPrice.price,
-				count: userItems.count,
-				sum: sql<number>`item_price.price * user_item.count`.as("sum"),
-				createdAt: updates.updatedAt,
-			})
-			.from(userItems)
-			.innerJoin(itemsPrice, eq(userItems.itemId, itemsPrice.itemId))
-			.innerJoin(items, eq(userItems.itemId, items.id))
-			.innerJoin(updates, eq(itemsPrice.updateId, updates.id))
-			.where(and(eq(userItems.userId, steamUserId), eq(updates.userId, steamUserId)))
-			.orderBy(updates.updatedAt);
+		const { userItemsRecords, currencyRatesOverTime, inventoryOverTime } =
+			await getUserData(steamUserId);
 
 		return {
 			profileInfo: { ...profileInfo, updatedAt: now },
