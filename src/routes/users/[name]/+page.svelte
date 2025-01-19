@@ -304,12 +304,19 @@
 									}}
 								>
 									<div class="relative">
-										<img
-											src="https://community.cloudflare.steamstatic.com/economy/image/{itemsObj[
-												entry.id
-											].iconHash}"
-											alt={itemsObj[entry.id].name}
-										/>
+										<div class="relative">
+											<img
+												src="https://community.cloudflare.steamstatic.com/economy/image/{itemsObj[
+													entry.id
+												].iconHash}"
+												alt={itemsObj[entry.id].name}
+											/>
+											{#if entry.id === caseIdFilter}
+												<div
+													class="absolute bottom-0 right-0 h-3 w-3 animate-pulse rounded-full bg-teal-300"
+												></div>
+											{/if}
+										</div>
 										<Badge variant="secondary" class="absolute left-0 top-0 cursor-default">
 											{entry.count}x
 										</Badge>
@@ -318,11 +325,7 @@
 												(entry.price * currentCurrencyRate).toFixed(2),
 											)}
 										</Badge>
-										{#if entry.id === caseIdFilter}
-											<div
-												class="absolute bottom-0 right-0 h-4 w-4 animate-pulse rounded-full bg-teal-300"
-											></div>
-										{/if}
+
 										<div class="text-balance text-center text-xs">{itemsObj[entry.id].name}</div>
 									</div>
 									<div class="flex flex-col items-center gap-2">
@@ -356,13 +359,18 @@
 												else caseIdFilter = entry.id;
 											}}
 										>
-											<Table.Cell>
+											<Table.Cell class="relative">
 												<img
 													src="https://community.cloudflare.steamstatic.com/economy/image/{itemsObj[
 														entry.id
 													].iconHash}"
 													alt={itemsObj[entry.id].name}
 												/>
+												{#if entry.id === caseIdFilter}
+													<div
+														class="absolute bottom-3 right-2 h-3 w-3 animate-pulse rounded-full bg-teal-300"
+													></div>
+												{/if}
 											</Table.Cell>
 											<Table.Cell class="text-nowrap">{itemsObj[entry.id].name}</Table.Cell>
 											<Table.Cell class="text-nowrap text-right">{entry.count}</Table.Cell>
