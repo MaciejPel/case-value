@@ -172,7 +172,7 @@ export const load: PageServerLoad = async ({ params }) => {
 	let useCache = false;
 	if (cachedUser && lastUpdate) {
 		const refreshAvailableAt = new Date(lastUpdate.updatedAt);
-		refreshAvailableAt.setHours(refreshAvailableAt.getHours() + 2);
+		refreshAvailableAt.setHours(refreshAvailableAt.getHours() + 4);
 		useCache = refreshAvailableAt > now;
 	}
 

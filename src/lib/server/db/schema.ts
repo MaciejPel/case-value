@@ -16,7 +16,7 @@ export const updates = sqliteTable("user_updates", {
 	id: integer("id").primaryKey({ autoIncrement: true }),
 	userId: text("user_id")
 		.notNull()
-		.references(() => users.id),
+		.references(() => users.id, { onDelete: "cascade" }),
 	updatedAt: integer("updated_at", { mode: "timestamp" })
 		.notNull()
 		.default(sql`(unixepoch())`),
@@ -56,7 +56,7 @@ export const itemsPrice = sqliteTable("item_price", {
 	price: real("price").notNull(),
 	updateId: integer("update_id")
 		.notNull()
-		.references(() => updates.id),
+		.references(() => updates.id, { onDelete: "cascade" }),
 });
 
 export const currencyRates = sqliteTable("currency_rates", {
@@ -64,5 +64,5 @@ export const currencyRates = sqliteTable("currency_rates", {
 	rate: real("rate").notNull(),
 	updateId: integer("update_id")
 		.notNull()
-		.references(() => updates.id),
+		.references(() => updates.id, { onDelete: "cascade" }),
 });

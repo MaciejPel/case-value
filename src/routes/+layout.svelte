@@ -36,7 +36,7 @@
 				</Dialog.Description>
 				<Dialog.Description class="text-left">
 					Prices & currencies are automatically refreshed after loading when there is no cooldown
-					time (2 hours). Calculated values are not 100% accurate, but they give some indication of
+					time (4 hours). Calculated values are not 100% accurate, but they give some indication of
 					the actual value of cases. Values are cached in database, so if you have new items, you
 					can press ‘Update inventory’ button. Same applies to profile information. You can also
 					check value of a particular case over time by clicking on it and analyzing the chart.
