@@ -8,7 +8,7 @@ export const users = sqliteTable("user", {
 });
 
 export const usersRelations = relations(users, ({ many }) => ({
-	items: many(userItems),
+	userItems: many(userItems),
 	updates: many(updates),
 }));
 
@@ -21,6 +21,10 @@ export const updates = sqliteTable("user_updates", {
 		.notNull()
 		.default(sql`(unixepoch())`),
 });
+
+export const updatesRelations = relations(updates, ({ one }) => ({
+	user: one(users, { fields: [updates.userId], references: [users.id] }),
+}));
 
 export const userItems = sqliteTable(
 	"user_item",
@@ -38,6 +42,10 @@ export const userItems = sqliteTable(
 	},
 );
 
+export const userItemsRelations = relations(userItems, ({ one }) => ({
+	user: one(users, { fields: [userItems.itemId], references: [users.id] }),
+}));
+
 export const items = sqliteTable("item", {
 	id: text("id").primaryKey(),
 	name: text("name").notNull(),
@@ -45,8 +53,7 @@ export const items = sqliteTable("item", {
 });
 
 export const itemsRelations = relations(items, ({ many }) => ({
-	items: many(itemsPrice),
-	users: many(userItems),
+	itemsPrice: many(itemsPrice),
 }));
 
 export const itemsPrice = sqliteTable("item_price", {
@@ -58,6 +65,10 @@ export const itemsPrice = sqliteTable("item_price", {
 		.notNull()
 		.references(() => updates.id, { onDelete: "cascade" }),
 });
+
+export const itemsPriceRelations = relations(itemsPrice, ({ one }) => ({
+	item: one(items, { fields: [itemsPrice.itemId], references: [items.id] }),
+}));
 
 export const currencyRates = sqliteTable("currency_rates", {
 	code: text("code", { length: 3 }).notNull(),

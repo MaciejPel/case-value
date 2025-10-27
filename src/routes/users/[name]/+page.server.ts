@@ -3,7 +3,7 @@ import type { PageServerLoad } from "./$types";
 import { STEAM_API_KEY } from "$env/static/private";
 import { db } from "$lib/server/db";
 import { currencyRates, items, itemsPrice, updates, userItems, users } from "$lib/server/db/schema";
-import { and, desc, eq, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, notInArray, sql } from "drizzle-orm";
 
 interface Inventory {
 	assets: Asset[];
@@ -153,8 +153,11 @@ async function getUserInfo(name: string) {
 }
 
 export const load: PageServerLoad = async ({ params }) => {
-	const now = new Date();
 	const { name } = params;
+
+	const now = new Date();
+	const oneMonthAgo = new Date(now);
+	oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
 
 	const steamUser = await getUserInfo(name);
 	if (steamUser.response.success !== 1) error(404, "Steam profile not found");
@@ -172,7 +175,7 @@ export const load: PageServerLoad = async ({ params }) => {
 	let useCache = false;
 	if (cachedUser && lastUpdate) {
 		const refreshAvailableAt = new Date(lastUpdate.updatedAt);
-		refreshAvailableAt.setHours(refreshAvailableAt.getHours() + 4);
+		refreshAvailableAt.setHours(refreshAvailableAt.getHours() + 3);
 		useCache = refreshAvailableAt > now;
 	}
 
@@ -187,7 +190,7 @@ export const load: PageServerLoad = async ({ params }) => {
 			.select({ code: currencyRates.code, rate: currencyRates.rate, createdAt: updates.updatedAt })
 			.from(updates)
 			.innerJoin(currencyRates, eq(currencyRates.updateId, updates.id))
-			.where(eq(updates.userId, steamUserId));
+			.where(and(eq(updates.userId, steamUserId), gte(updates.updatedAt, oneMonthAgo)));
 
 		const inventoryOverTime = await db
 			.select({
@@ -201,10 +204,38 @@ export const load: PageServerLoad = async ({ params }) => {
 			.innerJoin(itemsPrice, eq(userItems.itemId, itemsPrice.itemId))
 			.innerJoin(items, eq(userItems.itemId, items.id))
 			.innerJoin(updates, eq(itemsPrice.updateId, updates.id))
-			.where(and(eq(userItems.userId, steamUserId), eq(updates.userId, steamUserId)))
+			.where(
+				and(
+					eq(userItems.userId, steamUserId),
+					eq(updates.userId, steamUserId),
+					gte(updates.updatedAt, oneMonthAgo),
+				),
+			)
 			.orderBy(updates.updatedAt);
 
-		return { userItemsRecords, currencyRatesOverTime, inventoryOverTime };
+		const worstToBest = await db
+			.select({
+				id: itemsPrice.itemId,
+				min: sql<number>`COALESCE(MIN(${itemsPrice.price}), 0)`,
+				max: sql<number>`COALESCE(MAX(${itemsPrice.price}), 0)`,
+			})
+			.from(itemsPrice)
+			.where(
+				inArray(
+					itemsPrice.itemId,
+					userItemsRecords.map((v) => v.id),
+				),
+			)
+			.groupBy(itemsPrice.itemId);
+
+		return {
+			userItemsRecords: userItemsRecords.map((v) => {
+				const itemWorstToBest = worstToBest.find((item) => item.id === v.id)!;
+				return { ...v, min: itemWorstToBest.min, max: itemWorstToBest.max };
+			}),
+			currencyRatesOverTime,
+			inventoryOverTime,
+		};
 	};
 
 	if (useCache && cachedUser) {

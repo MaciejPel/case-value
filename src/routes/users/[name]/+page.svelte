@@ -41,10 +41,10 @@
 	let itemsObj = $derived(
 		data.items.reduce(
 			(acc, v) => {
-				acc[v.id] = { name: v.name, iconHash: v.iconHash };
+				acc[v.id] = { name: v.name, iconHash: v.iconHash, min: v.min, max: v.max };
 				return acc;
 			},
-			{} as { [key: string]: { name: string; iconHash: string } },
+			{} as { [key: string]: { name: string; iconHash: string; min: number; max: number } },
 		),
 	);
 	let inventoryOverTime = $derived(
@@ -323,6 +323,19 @@
 										<Badge variant="secondary" class="absolute right-0 top-0 cursor-default">
 											{currencies[currencyStore.value].currencyFormatter(
 												(entry.price * currentCurrencyRate).toFixed(2),
+											)}
+										</Badge>
+										<Badge variant="destructive" class="absolute right-0 top-6 cursor-default">
+											{currencies[currencyStore.value].currencyFormatter(
+												(itemsObj[entry.id].min * currentCurrencyRate).toFixed(2),
+											)}
+										</Badge>
+										<Badge
+											variant="destructive"
+											class="absolute right-0 top-12 cursor-default bg-green-600 hover:bg-green-600/75"
+										>
+											{currencies[currencyStore.value].currencyFormatter(
+												(itemsObj[entry.id].max * currentCurrencyRate).toFixed(2),
 											)}
 										</Badge>
 
