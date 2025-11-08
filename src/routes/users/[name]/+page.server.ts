@@ -163,8 +163,7 @@ export const load: PageServerLoad = async ({ params }) => {
 	if (steamUser.response.success !== 1) error(404, "Steam profile not found");
 	const steamUserId = steamUser.response.steamid;
 
-	const cachedUsers = await db.select().from(users).where(eq(users.id, steamUserId));
-	const cachedUser = cachedUsers.length ? cachedUsers[0] : null;
+	const [cachedUser] = await db.select().from(users).where(eq(users.id, steamUserId));
 	const [lastUpdate] = await db
 		.select()
 		.from(updates)
@@ -285,7 +284,7 @@ export const load: PageServerLoad = async ({ params }) => {
 			await db
 				.insert(items)
 				.values(inventory.map((v) => ({ id: v.id, iconHash: v.iconHash, name: v.name })))
-				.onConflictDoNothing({ target: items.id });
+				.onDuplicateKeyUpdate({ set: { id: sql`values(${items.id})` } });
 			await db
 				.insert(userItems)
 				.values(inventory.map((v) => ({ userId: profileInfo.id, itemId: v.id, count: v.count })));
@@ -293,7 +292,7 @@ export const load: PageServerLoad = async ({ params }) => {
 		const [insertedUpdate] = await db
 			.insert(updates)
 			.values({ userId: profileInfo.id, updatedAt: now })
-			.returning();
+			.$returningId();
 		const currencyRate = [
 			{ code: "PLN", rate: currencyData.usd.pln, updateId: insertedUpdate.id },
 			{ code: "EUR", rate: currencyData.usd.eur, updateId: insertedUpdate.id },
@@ -344,7 +343,7 @@ export const actions = {
 		await db
 			.insert(items)
 			.values(inventory.map((v) => ({ id: v.id, iconHash: v.iconHash, name: v.name })))
-			.onConflictDoNothing({ target: items.id });
+			.onDuplicateKeyUpdate({ set: { id: sql`values(${items.id})` } });
 		for (const i of inventory) {
 			await db
 				.update(userItems)
@@ -354,7 +353,9 @@ export const actions = {
 		await db
 			.insert(userItems)
 			.values(inventory.map((v) => ({ userId: steamUserId, itemId: v.id, count: v.count })))
-			.onConflictDoNothing({ target: [userItems.itemId, userItems.userId] });
+			.onDuplicateKeyUpdate({
+				set: { userId: sql`values(${userItems.userId})`, itemId: sql`values(${userItems.itemId})` },
+			});
 		await db.delete(userItems).where(
 			and(
 				eq(userItems.userId, steamUserId),
