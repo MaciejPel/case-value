@@ -152,12 +152,12 @@ async function getUserInfo(name: string) {
 	return data;
 }
 
-export const load: PageServerLoad = async ({ params }) => {
+export const load: PageServerLoad = async ({ params, url }) => {
 	const { name } = params;
 
 	const now = new Date();
-	const oneMonthAgo = new Date(now);
-	oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+	const timeLimit = new Date(url.searchParams.get("time") === "all" ? 0 : now);
+	timeLimit.setMonth(timeLimit.getMonth() - 1);
 
 	const steamUser = await getUserInfo(name);
 	if (steamUser.response.success !== 1) error(404, "Steam profile not found");
@@ -189,7 +189,7 @@ export const load: PageServerLoad = async ({ params }) => {
 			.select({ code: currencyRates.code, rate: currencyRates.rate, createdAt: updates.updatedAt })
 			.from(updates)
 			.innerJoin(currencyRates, eq(currencyRates.updateId, updates.id))
-			.where(and(eq(updates.userId, steamUserId), gte(updates.updatedAt, oneMonthAgo)));
+			.where(and(eq(updates.userId, steamUserId), gte(updates.updatedAt, timeLimit)));
 
 		const inventoryOverTime = await db
 			.select({
@@ -207,7 +207,7 @@ export const load: PageServerLoad = async ({ params }) => {
 				and(
 					eq(userItems.userId, steamUserId),
 					eq(updates.userId, steamUserId),
-					gte(updates.updatedAt, oneMonthAgo),
+					gte(updates.updatedAt, timeLimit),
 				),
 			)
 			.orderBy(updates.updatedAt);
