@@ -3,7 +3,7 @@ import type { PageServerLoad } from "./$types";
 import { STEAM_API_KEY } from "$env/static/private";
 import { db } from "$lib/server/db";
 import { currencyRates, items, itemsPrice, updates, userItems, users } from "$lib/server/db/schema";
-import { and, desc, eq, gte, inArray, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, notInArray, sql } from "drizzle-orm";
 
 interface Inventory {
 	assets: Asset[];
@@ -179,12 +179,6 @@ export const load: PageServerLoad = async ({ params, url }) => {
 	}
 
 	const getUserData = async (steamUserId: string) => {
-		const userItemsRecords = await db
-			.select({ id: items.id, name: items.name, iconHash: items.iconHash })
-			.from(userItems)
-			.innerJoin(items, eq(userItems.itemId, items.id))
-			.where(eq(userItems.userId, steamUserId));
-
 		const currencyRatesOverTime = await db
 			.select({ code: currencyRates.code, rate: currencyRates.rate, createdAt: updates.updatedAt })
 			.from(updates)
@@ -214,24 +208,20 @@ export const load: PageServerLoad = async ({ params, url }) => {
 
 		const worstToBest = await db
 			.select({
-				id: itemsPrice.itemId,
+				id: userItems.itemId,
+				name: items.name,
+				iconHash: items.iconHash,
 				min: sql<number>`COALESCE(MIN(${itemsPrice.price}), 0)`,
 				max: sql<number>`COALESCE(MAX(${itemsPrice.price}), 0)`,
 			})
-			.from(itemsPrice)
-			.where(
-				inArray(
-					itemsPrice.itemId,
-					userItemsRecords.map((v) => v.id),
-				),
-			)
-			.groupBy(itemsPrice.itemId);
+			.from(userItems)
+			.innerJoin(items, eq(userItems.itemId, items.id))
+			.leftJoin(itemsPrice, eq(userItems.itemId, itemsPrice.itemId))
+			.where(eq(userItems.userId, steamUserId))
+			.groupBy(userItems.itemId);
 
 		return {
-			userItemsRecords: userItemsRecords.map((v) => {
-				const itemWorstToBest = worstToBest.find((item) => item.id === v.id)!;
-				return { ...v, min: itemWorstToBest.min, max: itemWorstToBest.max };
-			}),
+			userItemsRecords: worstToBest,
 			currencyRatesOverTime,
 			inventoryOverTime,
 		};
@@ -297,10 +287,16 @@ export const load: PageServerLoad = async ({ params, url }) => {
 			{ code: "PLN", rate: currencyData.usd.pln, updateId: insertedUpdate.id },
 			{ code: "EUR", rate: currencyData.usd.eur, updateId: insertedUpdate.id },
 		];
+		const userItemsRows = await db
+			.select()
+			.from(userItems)
+			.where(eq(userItems.userId, steamUserId));
 		await db
 			.insert(itemsPrice)
 			.values(
-				inventory.map((v) => ({ itemId: v.id, price: v.price, updateId: insertedUpdate.id })),
+				inventory
+					.filter((i) => Boolean(userItemsRows.find((uir) => uir.itemId === i.id)))
+					.map((v) => ({ itemId: v.id, price: v.price, updateId: insertedUpdate.id })),
 			);
 		await db.insert(currencyRates).values(currencyRate);
 
