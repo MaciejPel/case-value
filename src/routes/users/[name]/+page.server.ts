@@ -68,7 +68,7 @@ interface Tag {
 
 interface MarketPrice {
 	success: boolean;
-	lowest_price: string;
+	lowest_price?: string;
 	volume: string;
 	median_price: string;
 }
@@ -244,12 +244,15 @@ export const load: PageServerLoad = async ({ params, url }) => {
 
 		if (!inventory.length) error(400, { message: "Inventory doesn't contain any cases" });
 
-		const marketPromises = inventory.map(async (v) => {
+		const marketPromises = inventory.map(async (v, index) => {
+			await new Promise((resolve) => setTimeout(() => resolve(null), index * 250));
 			const res = await fetch(endpoints.price(v.name));
 			const data: MarketPrice = await res.json();
 			return {
 				id: v.id,
-				price: Number(data.lowest_price.replace(/[^0-9.,]/g, "").replace(",", ".")),
+				price: Number(
+					(data.lowest_price || data.median_price)?.replace(/[^0-9.,]/g, "").replace(",", "."),
+				),
 			};
 		});
 		const fulfilledMarketPromises = (await Promise.allSettled(marketPromises))
